@@ -3,7 +3,7 @@ using Starter.Api.Data;
 using Starter.Api.Features.Todos;
 
 const string FrontendCorsPolicy = "frontend";
-
+// Test comment
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
