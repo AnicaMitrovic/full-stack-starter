@@ -1,10 +1,14 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Starter.Api.Data;
 using Starter.Api.Features.Teams;
 using Starter.Api.Features.Todos;
 
 const string FrontendCorsPolicy = "frontend";
+const string SearchRateLimitPolicy = TodosController.SearchRateLimitPolicy;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +34,28 @@ var frontendOrigin = builder.Configuration["Frontend:Origin"] ?? "http://localho
 builder.Services.AddCors(options =>
     options.AddPolicy(FrontendCorsPolicy, policy => policy.WithOrigins(frontendOrigin).AllowAnyHeader().AllowAnyMethod()));
 
+// Search is the most expensive query: cap it per client IP. The X-Team header is not used as the key,
+// because anyone can change it and get a fresh quota.
+var searchPermitLimit = builder.Configuration.GetValue("RateLimiting:Search:PermitLimit", 30);
+var searchWindow = TimeSpan.FromSeconds(builder.Configuration.GetValue("RateLimiting:Search:WindowSeconds", 60));
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(SearchRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = searchPermitLimit, Window = searchWindow, QueueLimit = 0 }));
+    options.OnRejected = (context, _) =>
+    {
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            context.HttpContext.Response.Headers.RetryAfter =
+                ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+        }
+
+        return ValueTask.CompletedTask;
+    };
+});
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -51,6 +77,7 @@ else
 }
 
 app.UseCors(FrontendCorsPolicy);
+app.UseRateLimiter();
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 

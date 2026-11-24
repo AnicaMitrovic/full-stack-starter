@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Starter.Api.Shared;
 
 namespace Starter.Api.Features.Todos;
@@ -8,6 +9,8 @@ namespace Starter.Api.Features.Todos;
 [Route("api/todos")]
 public sealed class TodosController(TodoService service) : ControllerBase
 {
+    public const string SearchRateLimitPolicy = "search";
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<TodoResponse>>> List(CancellationToken cancellationToken)
     {
@@ -16,6 +19,7 @@ public sealed class TodosController(TodoService service) : ControllerBase
     }
 
     [HttpGet("search")]
+    [EnableRateLimiting(SearchRateLimitPolicy)]
     public async Task<ActionResult<IReadOnlyList<TodoResponse>>> Search([FromQuery] string q, CancellationToken cancellationToken)
     {
         var result = await service.SearchAsync(q, cancellationToken);
