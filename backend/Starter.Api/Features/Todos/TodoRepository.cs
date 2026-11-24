@@ -32,8 +32,9 @@ public sealed class TodoRepository(AppDbContext db, TeamContext team) : ITodoRep
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
+    // Always scoped to the caller's team: another team's todo is "not found", so nobody learns that the id exists.
     public Task<Todo?> FindAsync(int id, CancellationToken cancellationToken) =>
-        db.Todos.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
+        db.Todos.FirstOrDefaultAsync(t => t.Id == id && t.TeamId == TeamId && !t.IsDeleted, cancellationToken);
 
     public async Task AddAsync(Todo todo, CancellationToken cancellationToken)
     {
