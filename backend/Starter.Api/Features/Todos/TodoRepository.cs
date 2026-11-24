@@ -26,11 +26,15 @@ public sealed class TodoRepository(AppDbContext db, TeamContext team) : ITodoRep
     public Task<int> CountOverdueAsync(DateOnly today, CancellationToken cancellationToken) =>
         Overdue(today).CountAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<Todo>> SearchAsync(string query, CancellationToken cancellationToken) =>
-        await db.Todos
-            .FromSqlRaw($"SELECT * FROM Todos WHERE TeamId = {TeamId} AND IsDeleted = 0 AND Title LIKE '%{query}%'")
-            .AsNoTracking()
+    // LINQ, so EF Core sends the user's text as a SQL parameter and it can never become part of the statement.
+    // LIKE wildcards in the text are escaped, so "%" and "_" are searched for literally.
+    public async Task<IReadOnlyList<Todo>> SearchAsync(string query, CancellationToken cancellationToken)
+    {
+        var pattern = $"%{EscapeLike(query)}%";
+        return await db.Todos.AsNoTracking()
+            .Where(t => t.TeamId == TeamId && !t.IsDeleted && EF.Functions.Like(t.Title, pattern, LikeEscape))
             .ToListAsync(cancellationToken);
+    }
 
     // Always scoped to the caller's team: another team's todo is "not found", so nobody learns that the id exists.
     public Task<Todo?> FindAsync(int id, CancellationToken cancellationToken) =>
@@ -46,6 +50,11 @@ public sealed class TodoRepository(AppDbContext db, TeamContext team) : ITodoRep
     public void Remove(Todo todo) => db.Todos.Remove(todo);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
+
+    private const string LikeEscape = "\\";
+
+    private static string EscapeLike(string text) =>
+        text.Replace(LikeEscape, LikeEscape + LikeEscape).Replace("%", LikeEscape + "%").Replace("_", LikeEscape + "_");
 
     // Same rule as TodoDeadlines.IsOverdue, written so EF Core can turn it into SQL.
     private IQueryable<Todo> Overdue(DateOnly today) =>
