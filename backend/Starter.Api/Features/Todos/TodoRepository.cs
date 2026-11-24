@@ -36,13 +36,10 @@ public sealed class TodoRepository(AppDbContext db, TeamContext team) : ITodoRep
     public Task<Todo?> FindAsync(int id, CancellationToken cancellationToken) =>
         db.Todos.FirstOrDefaultAsync(t => t.Id == id && t.TeamId == TeamId && !t.IsDeleted, cancellationToken);
 
+    // The server decides the team: a new todo always belongs to the team making the request.
     public async Task AddAsync(Todo todo, CancellationToken cancellationToken)
     {
-        if (todo.TeamId == 0)
-        {
-            todo.TeamId = TeamId;
-        }
-
+        todo.TeamId = TeamId;
         await db.Todos.AddAsync(todo, cancellationToken);
     }
 
