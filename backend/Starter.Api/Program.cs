@@ -36,11 +36,16 @@ using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
 }
 
-app.UseDeveloperExceptionPage();
-
 if (app.Environment.IsDevelopment())
 {
+    // Stack traces are for the developer's own machine only.
+    app.UseDeveloperExceptionPage();
     app.MapOpenApi();
+}
+else
+{
+    // Everyone else gets a short ProblemDetails (from AddProblemDetails); the full exception is logged.
+    app.UseExceptionHandler();
 }
 
 app.UseCors(FrontendCorsPolicy);
